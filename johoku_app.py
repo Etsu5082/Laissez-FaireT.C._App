@@ -1,3 +1,7 @@
+#  エラーが発生して修正が難しい場合、Laissez-Faire T.C. 11th幹事長、渡邉光悦に連絡すること。
+#  kohetsu.watanabe@gmail.com
+#  080-2671-9571
+
 import sys
 import os
 import pandas as pd
