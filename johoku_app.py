@@ -269,11 +269,25 @@ class WorkerThread(QThread):
     # 抽選申込の実行
     def run_lottery_application(self):
         csv_file = self.params.get("csv_file", "Johoku1.csv")
+        park_name = self.params.get("park_name", "城北中央公園")
+        gui_time_code = self.params.get("time_code", None)  # GUIから指定された時間帯
         apply_number_text = self.params.get("apply_number_text", "申込み1件目")
         headless = self.params.get("headless", True)  # ヘッドレスモード設定
         
         self.update_signal.emit(f"CSVファイル {csv_file} から予約情報を読み込んでいます...")
+        self.update_signal.emit(f"選択された公園: {park_name}")
         self.update_signal.emit(f"ヘッドレスモード: {'有効' if headless else '無効'}")
+        
+        # 公園に応じた施設設定のマッピング
+        park_facility_map = {
+            "城北中央公園": "テニス（人工芝・照明有）",
+            "城北中央公園(冬季)": "テニス（人工芝・照明有）",
+            "木場公園": "テニス（人工芝）",
+            "光が丘公園": "人工芝"
+        }
+        
+        facility_name = park_facility_map.get(park_name, "テニス（人工芝・照明有）")
+        self.update_signal.emit(f"対象施設: {facility_name}")
         
         # CSVからデータを読み込み
         users_data = pd.read_csv(csv_file, dtype={
@@ -301,7 +315,8 @@ class WorkerThread(QThread):
                 user_number = row['user_number']
                 password = row['password']
                 booking_date = row['booking_date']
-                time_code = row['time_code']
+                # GUIからtime_codeが指定されていればそれを使用、なければCSVの値を使用
+                time_code = gui_time_code if gui_time_code else row['time_code']
                 
                 # booking_date を正しく分解（例: 2025-05-02 -> 年=2025, 月=5, 日=2）
                 date_parts = booking_date.split('-')
@@ -633,14 +648,14 @@ class WorkerThread(QThread):
                 driver.execute_script("arguments[0].click();", artificial_grass_tennis_button)
                 time_module.sleep(random.uniform(1.0, 2.0))
 
-                # 公園選択（「城北中央公園」）
+                # 公園選択
                 park_dropdown = wait.until(EC.element_to_be_clickable((By.ID, "bname")))
-                Select(park_dropdown).select_by_visible_text("城北中央公園")
+                Select(park_dropdown).select_by_visible_text(park_name)
                 time_module.sleep(2)
 
-                # 施設選択（「テニス（人工芝）」）
+                # 施設選択
                 facility_dropdown = wait.until(EC.element_to_be_clickable((By.ID, "iname")))
-                Select(facility_dropdown).select_by_visible_text("テニス（人工芝・照明有）")
+                Select(facility_dropdown).select_by_visible_text(facility_name)
                 time_module.sleep(2)
 
                 # 日付が見つかるまで翌週ボタンを押す
@@ -2013,6 +2028,36 @@ class JohokuApp(QMainWindow):
         file_layout.addWidget(self.browse_lottery_button)
         layout.addLayout(file_layout)
         
+        # 公園選択
+        park_layout = QHBoxLayout()
+        park_layout.addWidget(QLabel("公園選択:"))
+        self.park_select = QComboBox()
+        self.park_select.addItem("城北中央公園")
+        self.park_select.addItem("城北中央公園(冬季)")
+        self.park_select.addItem("木場公園")
+        self.park_select.addItem("光が丘公園")
+        self.park_select.currentTextChanged.connect(self.on_park_selection_changed)
+        park_layout.addWidget(self.park_select)
+        park_layout.addStretch()
+        layout.addLayout(park_layout)
+        
+        # 時間帯選択
+        time_layout = QHBoxLayout()
+        time_layout.addWidget(QLabel("時間帯:"))
+        self.lottery_time_select = QComboBox()
+        # デフォルトは通常の6コマ
+        self.lottery_time_select.addItems([
+            "9:00~11:00",
+            "11:00~13:00", 
+            "13:00~15:00",
+            "15:00~17:00",
+            "17:00~19:00",
+            "19:00~21:00"
+        ])
+        time_layout.addWidget(self.lottery_time_select)
+        time_layout.addStretch()
+        layout.addLayout(time_layout)
+        
         # 申込み種類選択
         type_layout = QHBoxLayout()
         type_layout.addWidget(QLabel("申込み種類:"))
@@ -2419,11 +2464,46 @@ class JohokuApp(QMainWindow):
         # スレッドを開始
         self.worker.start()
     
+    # 公園選択変更時のハンドラ
+    def on_park_selection_changed(self, park_name):
+        self.lottery_time_select.clear()
+        if park_name == "城北中央公園(冬季)":
+            # 冬季は3コマ
+            self.lottery_time_select.addItems([
+                "9:00~11:00",
+                "11:00~13:00", 
+                "13:00~16:00"
+            ])
+        else:
+            # その他は通常の6コマ
+            self.lottery_time_select.addItems([
+                "9:00~11:00",
+                "11:00~13:00", 
+                "13:00~15:00",
+                "15:00~17:00",
+                "17:00~19:00",
+                "19:00~21:00"
+            ])
+
     # 抽選申込処理を開始する関数
     def start_lottery_application(self):
         csv_file = self.lottery_csv_file.text()
         apply_number_text = self.apply_type.currentText()
+        park_name = self.park_select.currentText()
+        selected_time = self.lottery_time_select.currentText()
         headless = self.lottery_headless_checkbox.isChecked()  # ヘッドレスモード設定を取得
+        
+        # 時間帯からtime_codeを取得
+        time_code_map = {
+            "9:00~11:00": "1",
+            "11:00~13:00": "2", 
+            "13:00~15:00": "3",
+            "15:00~17:00": "4",
+            "17:00~19:00": "5",
+            "19:00~21:00": "6",
+            "13:00~16:00": "3"  # 冬季の3コマ目
+        }
+        time_code = time_code_map.get(selected_time, "1")
         
         # 入力チェック
         if not csv_file:
@@ -2440,6 +2520,8 @@ class JohokuApp(QMainWindow):
         
         # 確認情報を表示
         message = (f"CSVファイル: {csv_file}\n"
+                  f"公園選択: {park_name}\n"
+                  f"時間帯: {selected_time} (コード: {time_code})\n"
                   f"申込み種類: {apply_number_text}\n"
                   f"ヘッドレスモード: {'有効' if headless else '無効'}\n\n"
                   f"処理を開始します")
@@ -2449,6 +2531,8 @@ class JohokuApp(QMainWindow):
         # パラメータを設定
         params = {
             "csv_file": csv_file,
+            "park_name": park_name,
+            "time_code": time_code,
             "apply_number_text": apply_number_text,
             "headless": headless  # ヘッドレスモード設定を追加
         }
