@@ -340,7 +340,7 @@ class WorkerThread(QThread):
                 driver.switch_to.window(new_tab)
 
                 # 選択された申込み種類を使用
-                success = self.handle_booking_process(driver, user_number, password, booking_day, time_code, apply_number_text, month_end)
+                success = self.handle_booking_process(driver, user_number, password, booking_day, time_code, apply_number_text, month_end, park_name, facility_name)
                 
                 if success:
                     self.update_signal.emit(f"ユーザー {user_number} の全処理が完了しました。")
@@ -530,7 +530,7 @@ class WorkerThread(QThread):
             self.update_signal.emit(f"Captchaチェック中にエラーが発生: {str(e)}")
             return False
 
-    def handle_booking_process(self, driver, user_number, password, booking_day, time_code, apply_number_text, month_end, max_retries=3):
+    def handle_booking_process(self, driver, user_number, password, booking_day, time_code, apply_number_text, month_end, park_name, facility_name, max_retries=3):
         """予約処理を実行する関数"""
         retry_count = 0
         
